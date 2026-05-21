@@ -1,0 +1,196 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model FonteDadosPublicos {
+  id          String            @id @default(cuid())
+  nome        String
+  tipo        String
+  descricao  String?
+  urlOrigem   String
+  ativo       Boolean           @default(true)
+  modulo      String
+  documentos  DocumentoOrigem[]
+  logs        ProcessamentoLog[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@unique([tipo, modulo, urlOrigem])
+}
+
+model DocumentoOrigem {
+  id                    String            @id @default(cuid())
+  fonteDadosPublicosId  String
+  ano                   Int
+  mes                   Int
+  tipoDocumento         String
+  nomeArquivo           String
+  caminhoArquivo        String
+  hashSha256            String
+  dataDownload          DateTime          @default(now())
+  statusProcessamento   String            @default("PENDENTE")
+  metadados             Json?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  fonteDadosPublicos    FonteDadosPublicos @relation(fields: [fonteDadosPublicosId], references: [id])
+  empenhos              Empenho[]
+  logs                  ProcessamentoLog[]
+  pdfArquivo            PdfArquivo?
+
+  @@unique([fonteDadosPublicosId, ano, mes, tipoDocumento])
+  @@index([ano, mes])
+  @@index([hashSha256])
+}
+
+model PdfArquivo {
+  id                    String           @id @default(cuid())
+  ano                   Int
+  mes                   Int
+  nomeArquivo           String
+  caminhoArquivo        String
+  hashSha256            String
+  dataDownload          DateTime         @default(now())
+  statusProcessamento   String           @default("PENDENTE")
+  documentoOrigemId     String?          @unique
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  documentoOrigem       DocumentoOrigem? @relation(fields: [documentoOrigemId], references: [id])
+}
+
+model ProcessamentoLog {
+  id                    String              @id @default(cuid())
+  fonteDadosPublicosId  String
+  documentoOrigemId     String?
+  modulo                String
+  inicio                DateTime
+  fim                   DateTime?
+  status                String
+  mensagem              String?
+  totalRegistros        Int                 @default(0)
+  totalErros            Int                 @default(0)
+  createdAt             DateTime            @default(now())
+  fonteDadosPublicos    FonteDadosPublicos  @relation(fields: [fonteDadosPublicosId], references: [id])
+  documentoOrigem       DocumentoOrigem?    @relation(fields: [documentoOrigemId], references: [id])
+}
+
+model Credor {
+  id              String    @id @default(cuid())
+  nome            String
+  documento       String?
+  nomeNormalizado String
+  empenhos        Empenho[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([nomeNormalizado])
+  @@index([nome])
+}
+
+model ProcessoCompra {
+  id              String    @id @default(cuid())
+  numero          String
+  modalidade      String?
+  processoLicitatorio String?
+  empenhos        Empenho[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([numero])
+}
+
+model Empenho {
+  id                      String              @id @default(cuid())
+  numeroEmpenho           String
+  tipoEmpenho             String?
+  dataEmpenho             DateTime?
+  ano                     Int
+  mes                     Int
+  ficha                   String?
+  credor                  String
+  credorId                String?
+  fonte                   String?
+  codigoAplicacao         String?
+  valorEmpenhado          Decimal             @default(0) @db.Decimal(16, 2)
+  valorAnulado            Decimal             @default(0) @db.Decimal(16, 2)
+  valorLiquidado          Decimal             @default(0) @db.Decimal(16, 2)
+  valorLiquidadoAnulado   Decimal             @default(0) @db.Decimal(16, 2)
+  valorPago               Decimal             @default(0) @db.Decimal(16, 2)
+  valorPagoAnulado        Decimal             @default(0) @db.Decimal(16, 2)
+  valorALiquidar          Decimal             @default(0) @db.Decimal(16, 2)
+  valorLiquidadoAPagar    Decimal             @default(0) @db.Decimal(16, 2)
+  valorAPagar             Decimal             @default(0) @db.Decimal(16, 2)
+  historico               String?
+  historicoMascarado      String?
+  processoCompra          String?
+  processoCompraId        String?
+  modalidadeLicitacao     String?
+  processoLicitatorio     String?
+  numeroModalidade        String?
+  pedidoCompra            String?
+  contrato                String?
+  aditamento              String?
+  gestor                  String?
+  categoria               String              @default("Outros")
+  secretariaEstimada      String?
+  status                  String              @default("A liquidar")
+  riskScore               Int                 @default(0)
+  riskLevel               String              @default("Baixo")
+  alertas                 Json?
+  resumoFiscalizacao      Json?
+  documentoOrigemId       String
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
+  documentoOrigem         DocumentoOrigem      @relation(fields: [documentoOrigemId], references: [id])
+  credorRef               Credor?             @relation(fields: [credorId], references: [id])
+  processoCompraRef       ProcessoCompra?     @relation(fields: [processoCompraId], references: [id])
+  documentosPagamento     DocumentoPagamento[]
+  alertasFiscalizacao     AlertaFiscalizacao[]
+
+  @@unique([numeroEmpenho, ano, mes])
+  @@index([ano, mes])
+  @@index([credor])
+  @@index([categoria])
+  @@index([riskLevel])
+  @@index([status])
+}
+
+model DocumentoPagamento {
+  id              String    @id @default(cuid())
+  empenhoId       String
+  tipo            String?
+  numero          String?
+  dataEmissao     DateTime?
+  dataVencimento  DateTime?
+  descricao       String?
+  valor           Decimal   @default(0) @db.Decimal(16, 2)
+  empenho         Empenho   @relation(fields: [empenhoId], references: [id], onDelete: Cascade)
+}
+
+model AlertaFiscalizacao {
+  id                    String   @id @default(cuid())
+  empenhoId             String
+  tipo                  String
+  nivel                 String
+  descricao             String
+  sugestaoFiscalizacao  String
+  createdAt             DateTime @default(now())
+  empenho               Empenho  @relation(fields: [empenhoId], references: [id], onDelete: Cascade)
+}
+
+model SyncLog {
+  id                      String    @id @default(cuid())
+  inicio                  DateTime
+  fim                     DateTime?
+  status                  String
+  mensagem                String?
+  ano                     Int?
+  mes                     Int?
+  totalEmpenhosExtraidos  Int       @default(0)
+  totalErros              Int       @default(0)
+  createdAt               DateTime  @default(now())
+}

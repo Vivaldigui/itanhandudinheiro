@@ -1,0 +1,49 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: itanhandu_transparencia
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d itanhandu_transparencia"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    command: sh -c "npx prisma migrate deploy && npm run start"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/itanhandu_transparencia?schema=public
+      PORTAL_CIDADAO_URL: ${PORTAL_CIDADAO_URL}
+      PUBLIC_APP_NAME: Onde vai o dinheiro de Itanhandu?
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  worker:
+    build: .
+    command: sh -c "npx prisma migrate deploy && xvfb-run -a npm run sync:portal"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/itanhandu_transparencia?schema=public
+      PORTAL_CIDADAO_URL: ${PORTAL_CIDADAO_URL}
+      AUTO_SYNC_ENABLED: "true"
+      CRON_EXPRESSION: ${CRON_EXPRESSION:-0 6 * * *}
+      PORTAL_HEADLESS: "false"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

@@ -1,0 +1,11 @@
+node_modules
+.next
+dist
+coverage
+.env
+.env*.local
+data/raw-pdfs/**/*.pdf
+data/processed-json/**/*.json
+data/logs/*
+!.gitkeep
+prisma/migrations
