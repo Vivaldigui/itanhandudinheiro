@@ -13,7 +13,7 @@ function cleanFilter(value?: string): string | undefined {
   return value;
 }
 
-function buildWhere(filters: EmpenhoFilters): Prisma.EmpenhoWhereInput {
+export function buildWhere(filters: EmpenhoFilters): Prisma.EmpenhoWhereInput {
   const where: Prisma.EmpenhoWhereInput = {};
   if (filters.ano) where.ano = filters.ano;
   if (filters.mes) where.mes = filters.mes;

@@ -1,16 +1,68 @@
-import { getEmpenhos } from "./dashboardQueries";
+import type { Prisma } from "@prisma/client";
+import { prisma } from "./prisma";
+import { buildWhere, toPlainEmpenho } from "./dashboardQueries";
 import { analyzeDiarias, applyDiariasFilters, summarizeDiarias, type DiariaItem, type DiariasSummary } from "@/modules/diarias/analyzer";
 import type { EmpenhoFilters } from "@/modules/empenhos/types";
 
-async function getAllEmpenhos(filters: EmpenhoFilters = {}) {
-  const first = await getEmpenhos({ ...filters, page: 1, pageSize: 500 });
-  const items = [...first.items];
-  const pages = Math.ceil(first.total / first.pageSize);
-  for (let page = 2; page <= pages; page += 1) {
-    const next = await getEmpenhos({ ...filters, page, pageSize: 500 });
-    items.push(...next.items);
+const diariaTerms = [
+  "diaria",
+  "diarias",
+  "diária",
+  "diárias",
+  "diÃ¡ria",
+  "diÃ¡rias",
+  "viagem",
+  "deslocamento",
+  "hospedagem",
+  "passagem",
+  "passagens",
+  "estadia",
+  "adiantamento",
+  "ressarcimento",
+  "taxa de inscricao",
+  "taxa de inscrição",
+  "taxa de inscriÃ§Ã£o"
+];
+
+const diariaSearchFields = [
+  "historico",
+  "historicoMascarado",
+  "credor",
+  "processoCompra",
+  "modalidadeLicitacao",
+  "secretariaEstimada"
+] satisfies Array<keyof Prisma.EmpenhoWhereInput>;
+
+function buildDiariasWhere(filters: EmpenhoFilters): Prisma.EmpenhoWhereInput {
+  const baseWhere = buildWhere({ ...filters, page: undefined, pageSize: undefined });
+  const diariaWhere: Prisma.EmpenhoWhereInput = {
+    OR: diariaTerms.flatMap((term) =>
+      diariaSearchFields.map((field) => ({
+        [field]: { contains: term, mode: "insensitive" }
+      }))
+    ) as Prisma.EmpenhoWhereInput[]
+  };
+
+  return Object.keys(baseWhere).length ? { AND: [baseWhere, diariaWhere] } : diariaWhere;
+}
+
+async function getDiariasDataset(filters: EmpenhoFilters = {}): Promise<DiariaItem[]> {
+  if (!process.env.DATABASE_URL) {
+    const { SAMPLE_EMPENHOS } = await import("./sampleData");
+    const { items } = analyzeDiarias(SAMPLE_EMPENHOS);
+    return applyDiariasFilters(items, filters);
   }
-  return items;
+
+  const rows = await prisma.empenho.findMany({
+    where: buildDiariasWhere(filters),
+    orderBy: [{ dataEmpenho: "desc" }, { numeroEmpenho: "desc" }],
+    include: {
+      documentosPagamento: true,
+      alertasFiscalizacao: true
+    }
+  });
+  const { items } = analyzeDiarias(rows.map((row) => toPlainEmpenho(row as unknown as Record<string, unknown>)));
+  return applyDiariasFilters(items, filters);
 }
 
 function sortDiarias(items: DiariaItem[], filters: EmpenhoFilters): DiariaItem[] {
@@ -26,9 +78,7 @@ function sortDiarias(items: DiariaItem[], filters: EmpenhoFilters): DiariaItem[]
 export async function getDiarias(filters: EmpenhoFilters = {}): Promise<{ items: DiariaItem[]; total: number; page: number; pageSize: number }> {
   const page = Math.max(1, filters.page ?? 1);
   const pageSize = Math.min(200, Math.max(1, filters.pageSize ?? 25));
-  const empenhos = await getAllEmpenhos({ ...filters, page: undefined, pageSize: undefined });
-  const { items } = analyzeDiarias(empenhos);
-  const filtered = sortDiarias(applyDiariasFilters(items, filters), filters);
+  const filtered = sortDiarias(await getDiariasDataset(filters), filters);
   return {
     items: filtered.slice((page - 1) * pageSize, page * pageSize),
     total: filtered.length,
@@ -38,7 +88,24 @@ export async function getDiarias(filters: EmpenhoFilters = {}): Promise<{ items:
 }
 
 export async function getDiariasSummary(filters: EmpenhoFilters = {}): Promise<DiariasSummary> {
-  const empenhos = await getAllEmpenhos({ ...filters, page: undefined, pageSize: undefined });
-  const { items } = analyzeDiarias(empenhos);
-  return summarizeDiarias(applyDiariasFilters(items, filters));
+  return summarizeDiarias(await getDiariasDataset(filters));
+}
+
+export async function getDiariasPageData(filters: EmpenhoFilters = {}): Promise<{
+  summary: DiariasSummary;
+  table: { items: DiariaItem[]; total: number; page: number; pageSize: number };
+}> {
+  const page = Math.max(1, filters.page ?? 1);
+  const pageSize = Math.min(200, Math.max(1, filters.pageSize ?? 25));
+  const filtered = sortDiarias(await getDiariasDataset(filters), filters);
+
+  return {
+    summary: summarizeDiarias(filtered),
+    table: {
+      items: filtered.slice((page - 1) * pageSize, page * pageSize),
+      total: filtered.length,
+      page,
+      pageSize
+    }
+  };
 }

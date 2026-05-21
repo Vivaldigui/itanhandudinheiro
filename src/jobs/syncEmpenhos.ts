@@ -1,3 +1,4 @@
+import "@/lib/loadEnv";
 import cron from "node-cron";
 import { prisma } from "@/lib/prisma";
 import { sincronizarHistorico, sincronizarMes, sincronizarMesesFuturos } from "@/modules/empenhos/crawler";

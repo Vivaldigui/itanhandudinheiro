@@ -4,7 +4,7 @@ import { DiariasCharts } from "@/components/DiariasCharts";
 import { FiltersBar } from "@/components/FiltersBar";
 import { Layout } from "@/components/Layout";
 import { RiskBadge, StatusBadge } from "@/components/AlertBadge";
-import { getDiarias, getDiariasSummary } from "@/lib/diariasQueries";
+import { getDiariasPageData } from "@/lib/diariasQueries";
 import { formatCurrency, formatDate, formatNumber, parseFiltersFromSearchParams } from "@/lib/formatters";
 
 type PageProps = {
@@ -23,10 +23,7 @@ function toUrlSearchParams(params: Record<string, string | string[] | undefined>
 export default async function DiariasPage({ searchParams }: PageProps) {
   const rawParams = await searchParams;
   const filters = parseFiltersFromSearchParams(toUrlSearchParams(rawParams));
-  const [summary, table] = await Promise.all([
-    getDiariasSummary(filters),
-    getDiarias({ ...filters, pageSize: filters.pageSize ?? 25 })
-  ]);
+  const { summary, table } = await getDiariasPageData({ ...filters, pageSize: filters.pageSize ?? 25 });
 
   const cards = [
     { label: "Total em diárias e viagens", value: formatCurrency(summary.totals.valorTotal), icon: WalletCards },
