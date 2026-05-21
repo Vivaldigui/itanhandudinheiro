@@ -8,3 +8,4 @@ data/raw-pdfs/**/*.pdf
 data/processed-json/**/*.json
 data/logs/*
 !.gitkeep
+.idx/
