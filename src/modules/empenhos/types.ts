@@ -94,6 +94,8 @@ export type NormalizedEmpenho = {
   riskLevel: RiskLevel;
   alertas: FiscalizacaoAlert[];
   resumoFiscalizacao?: FiscalizacaoResumo;
+  aiAnalise?: string | null;
+  clarezaHistorico?: "ALTO" | "MEDIO" | "BAIXO" | null;
   documentosPagamento: DocumentoPagamentoInput[];
 };
 

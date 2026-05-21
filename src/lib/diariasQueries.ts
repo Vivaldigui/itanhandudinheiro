@@ -1,7 +1,8 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { buildWhere, toPlainEmpenho } from "./dashboardQueries";
-import { analyzeDiarias, applyDiariasFilters, summarizeDiarias, type DiariaItem, type DiariasSummary } from "@/modules/diarias/analyzer";
+import { analyzeDiarias, applyDiariasFilters, buildDiariaItem, summarizeDiarias, type DiariaItem, type DiariasSummary } from "@/modules/diarias/analyzer";
+import type { AIDiariaResponse } from "@/lib/geminiDiarias";
 import type { EmpenhoFilters } from "@/modules/empenhos/types";
 
 const diariaTerms = [
@@ -46,6 +47,22 @@ function buildDiariasWhere(filters: EmpenhoFilters): Prisma.EmpenhoWhereInput {
   return Object.keys(baseWhere).length ? { AND: [baseWhere, diariaWhere] } : diariaWhere;
 }
 
+function getDadosDiariaIA(value: Prisma.JsonValue | null): AIDiariaResponse | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const dados = (value as Record<string, unknown>).dadosDiariaIA;
+  if (!dados || typeof dados !== "object" || Array.isArray(dados)) return null;
+
+  const row = dados as Record<string, unknown>;
+  if (typeof row.isDiariaValida !== "boolean") return null;
+
+  return {
+    isDiariaValida: row.isDiariaValida,
+    beneficiario: String(row.beneficiario ?? ""),
+    destino: String(row.destino ?? "Não identificado"),
+    tipoDespesa: String(row.tipoDespesa ?? "Outras despesas de viagem") as AIDiariaResponse["tipoDespesa"]
+  };
+}
+
 async function getDiariasDataset(filters: EmpenhoFilters = {}): Promise<DiariaItem[]> {
   if (!process.env.DATABASE_URL) {
     const { SAMPLE_EMPENHOS } = await import("./sampleData");
@@ -61,7 +78,24 @@ async function getDiariasDataset(filters: EmpenhoFilters = {}): Promise<DiariaIt
       alertasFiscalizacao: true
     }
   });
-  const { items } = analyzeDiarias(rows.map((row) => toPlainEmpenho(row as unknown as Record<string, unknown>)));
+
+  const items: DiariaItem[] = [];
+
+  for (const row of rows) {
+    const dadosIA = getDadosDiariaIA(row.resumoFiscalizacao);
+    if (dadosIA?.isDiariaValida === false) continue;
+
+    const plain = toPlainEmpenho(row as unknown as Record<string, unknown>);
+    const item = buildDiariaItem(plain);
+
+    items.push({
+      ...item,
+      beneficiario: dadosIA?.beneficiario || item.beneficiario,
+      destino: dadosIA?.destino || item.destino,
+      tipoDespesa: dadosIA?.tipoDespesa || item.tipoDespesa
+    });
+  }
+
   return applyDiariasFilters(items, filters);
 }
 

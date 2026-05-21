@@ -1,0 +1,3 @@
+ALTER TABLE "Empenho"
+ADD COLUMN IF NOT EXISTS "aiAnalise" TEXT,
+ADD COLUMN IF NOT EXISTS "clarezaHistorico" TEXT;

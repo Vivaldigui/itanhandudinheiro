@@ -39,6 +39,7 @@ model DocumentoOrigem {
   updatedAt             DateTime          @updatedAt
   fonteDadosPublicos    FonteDadosPublicos @relation(fields: [fonteDadosPublicosId], references: [id])
   empenhos              Empenho[]
+  licitacoes            Licitacao[]
   logs                  ProcessamentoLog[]
   pdfArquivo            PdfArquivo?
 
@@ -84,6 +85,7 @@ model Credor {
   documento       String?
   nomeNormalizado String
   empenhos        Empenho[]
+  licitacoes       LicitacaoFornecedor[]
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -142,6 +144,8 @@ model Empenho {
   riskLevel               String              @default("Baixo")
   alertas                 Json?
   resumoFiscalizacao      Json?
+  aiAnalise               String?
+  clarezaHistorico        String?
   documentoOrigemId       String
   createdAt               DateTime            @default(now())
   updatedAt               DateTime            @updatedAt
@@ -150,6 +154,7 @@ model Empenho {
   processoCompraRef       ProcessoCompra?     @relation(fields: [processoCompraId], references: [id])
   documentosPagamento     DocumentoPagamento[]
   alertasFiscalizacao     AlertaFiscalizacao[]
+  licitacoes              LicitacaoEmpenho[]
 
   @@unique([numeroEmpenho, ano, mes])
   @@index([ano, mes])
@@ -157,6 +162,78 @@ model Empenho {
   @@index([categoria])
   @@index([riskLevel])
   @@index([status])
+}
+
+model Licitacao {
+  id                  String                @id @default(cuid())
+  numeroProcesso      String
+  anoProcesso         Int
+  modalidade          String?
+  modalidadeCodigo    String?
+  numeroModalidade    String?
+  anoModalidade       Int?
+  abertura            DateTime?
+  devolucao           DateTime?
+  publicacao          DateTime?
+  situacao            String?
+  objeto              String?
+  criterio            String?
+  tipo                String?
+  localRealizacao     String?
+  prazoEntrega        String?
+  prazoExecucao       String?
+  dataSituacao        DateTime?
+  justificativa       String?
+  valorTotal          Decimal?              @db.Decimal(16, 2)
+  rawJson             Json?
+  documentoOrigemId   String?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  documentoOrigem     DocumentoOrigem?      @relation(fields: [documentoOrigemId], references: [id])
+  fornecedores        LicitacaoFornecedor[]
+  empenhos            LicitacaoEmpenho[]
+
+  @@unique([numeroProcesso])
+  @@index([anoProcesso])
+  @@index([modalidade])
+  @@index([situacao])
+  @@index([publicacao])
+}
+
+model LicitacaoFornecedor {
+  id                  String     @id @default(cuid())
+  licitacaoId         String
+  credorId            String?
+  nome                String
+  documento           String?
+  resultado           String?
+  contrato            String?
+  ata                 String?
+  valor               Decimal?   @db.Decimal(16, 2)
+  origem              String     @default("PORTAL")
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+  licitacao           Licitacao  @relation(fields: [licitacaoId], references: [id], onDelete: Cascade)
+  credor              Credor?    @relation(fields: [credorId], references: [id])
+
+  @@unique([licitacaoId, nome, documento, contrato, ata])
+  @@index([credorId])
+  @@index([nome])
+}
+
+model LicitacaoEmpenho {
+  id                  String    @id @default(cuid())
+  licitacaoId         String
+  empenhoId           String
+  tipoRelacao         String    @default("PROCESSO_LICITATORIO")
+  confianca           Int       @default(80)
+  createdAt           DateTime  @default(now())
+  licitacao           Licitacao @relation(fields: [licitacaoId], references: [id], onDelete: Cascade)
+  empenho             Empenho   @relation(fields: [empenhoId], references: [id], onDelete: Cascade)
+
+  @@unique([licitacaoId, empenhoId])
+  @@index([empenhoId])
+  @@index([tipoRelacao])
 }
 
 model DocumentoPagamento {

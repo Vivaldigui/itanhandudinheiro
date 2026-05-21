@@ -5,6 +5,9 @@ import { SAMPLE_EMPENHOS } from "../src/lib/sampleData";
 async function main() {
   await prisma.alertaFiscalizacao.deleteMany();
   await prisma.documentoPagamento.deleteMany();
+  await prisma.licitacaoEmpenho.deleteMany();
+  await prisma.licitacaoFornecedor.deleteMany();
+  await prisma.licitacao.deleteMany();
   await prisma.empenho.deleteMany();
   await prisma.pdfArquivo.deleteMany();
   await prisma.documentoOrigem.deleteMany();

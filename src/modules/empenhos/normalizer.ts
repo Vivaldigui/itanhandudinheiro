@@ -114,6 +114,12 @@ export function normalizeEmpenho(raw: RawEmpenho): NormalizedEmpenho {
     documentosPagamento: raw.documentosPagamento ?? []
   };
 
+  // 🔥 CORREÇÃO AQUI: Garante que o ano e mês sejam extraídos da data real do empenho!
+  if (normalized.dataEmpenho) {
+    normalized.ano = normalized.dataEmpenho.getFullYear();
+    normalized.mes = normalized.dataEmpenho.getMonth() + 1;
+  }
+
   normalized.status = calculateEmpenhoStatus(normalized);
   return normalized;
 }

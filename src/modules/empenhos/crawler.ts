@@ -8,6 +8,7 @@ import { chromium, type Browser, type BrowserContext, type Frame, type Page } fr
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { parsePdfFile } from "./pdfParser";
+import { isAIEnrichmentConfigured, processEmpenhoWithAI, type AIProcessingResult } from "./aiEnrichment";
 import { generateFiscalizacaoBrief } from "./aiFiscalizacao";
 import type { NormalizedEmpenho } from "./types";
 
@@ -337,7 +338,54 @@ async function ensureFonteDadosPublicos() {
   });
 }
 
+function isCurrentMonth({ ano, mes }: { ano: number; mes: number }): boolean {
+  const now = new Date();
+  return ano === now.getFullYear() && mes === now.getMonth() + 1;
+}
+
+function shouldUseAIEnrichment({ ano, mes }: { ano: number; mes: number }): boolean {
+  if (process.env.AI_EMPENHOS_ENABLED === "false") return false;
+  if (!isAIEnrichmentConfigured()) return false;
+  if (process.env.AI_EMPENHOS_ENABLED === "true") return true;
+  return isCurrentMonth({ ano, mes });
+}
+
+function aiCacheKey(empenho: NormalizedEmpenho): string {
+  return `${empenho.credor}\n${empenho.historico ?? ""}`;
+}
+
+async function enrichEmpenhoWithAI(
+  empenho: NormalizedEmpenho,
+  enabled: boolean,
+  cache: Map<string, AIProcessingResult | null>
+): Promise<NormalizedEmpenho> {
+  if (!enabled || empenho.categoria !== "Outros" || !empenho.historico) return empenho;
+
+  const key = aiCacheKey(empenho);
+  if (!cache.has(key)) {
+    try {
+      cache.set(key, await processEmpenhoWithAI(empenho.historico, empenho.credor));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await logMessage(`IA ignorada no empenho ${empenho.numeroEmpenho}: ${message}`);
+      cache.set(key, null);
+    }
+  }
+
+  const dadosIa = cache.get(key);
+  if (!dadosIa) return empenho;
+
+  return {
+    ...empenho,
+    categoria: dadosIa.categoria,
+    secretariaEstimada: dadosIa.secretariaEstimada,
+    aiAnalise: dadosIa.analiseCritica,
+    clarezaHistorico: dadosIa.grauDeClareza
+  };
+}
+
 async function persistEmpenhos(documentoOrigemId: string, empenhos: NormalizedEmpenho[]) {
+  // Opcional: não remova às cegas registros de outros meses se o parser reclassificar os meses
   await prisma.empenho.deleteMany({ where: { documentoOrigemId } });
 
   for (const empenho of empenhos) {
@@ -363,8 +411,30 @@ async function persistEmpenhos(documentoOrigemId: string, empenhos: NormalizedEm
       : null;
 
     const resumo = empenho.riskScore >= 30 ? generateFiscalizacaoBrief(empenho) : undefined;
-    await prisma.empenho.create({
-      data: {
+
+    // 🔥 MUDANÇA AQUI: De 'create' para 'upsert' com base na chave única composta
+    await prisma.empenho.upsert({
+      where: {
+        numeroEmpenho_ano_mes: {
+          numeroEmpenho: empenho.numeroEmpenho,
+          ano: empenho.ano,
+          mes: empenho.mes
+        }
+      },
+      update: {
+        // Se o empenho reaparecer em meses futuros, atualiza os valores financeiros consolidados
+        valorAnulado: empenho.valorAnulado,
+        valorLiquidado: empenho.valorLiquidado,
+        valorLiquidadoAnulado: empenho.valorLiquidadoAnulado,
+        valorPago: empenho.valorPago,
+        valorPagoAnulado: empenho.valorPagoAnulado,
+        valorALiquidar: empenho.valorALiquidar,
+        valorLiquidadoAPagar: empenho.valorLiquidadoAPagar,
+        valorAPagar: empenho.valorAPagar,
+        status: empenho.status,
+        documentoOrigemId
+      },
+      create: {
         numeroEmpenho: empenho.numeroEmpenho,
         tipoEmpenho: empenho.tipoEmpenho,
         dataEmpenho: empenho.dataEmpenho,
@@ -538,7 +608,11 @@ export async function sincronizarMes({ ano, mes }: { ano: number; mes: number })
     }
 
     const empenhos = await parsePdfFile(pdfPath, ano, mes);
-    await persistEmpenhos(documento.id, empenhos);
+    const useAIEnrichment = shouldUseAIEnrichment({ ano, mes });
+    if (useAIEnrichment) {
+      await logMessage(`Enriquecimento por IA habilitado para categorias "Outros" em ${ano}-${String(mes).padStart(2, "0")}.`);
+    }
+    await persistEmpenhos(documento.id, empenhos, { useAIEnrichment });
 
     await prisma.documentoOrigem.update({
       where: { id: documento.id },

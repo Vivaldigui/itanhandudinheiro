@@ -106,6 +106,8 @@ export function toPlainEmpenho(item: Record<string, unknown>): PlainEmpenho {
     riskScore: Number(item.riskScore ?? 0),
     riskLevel: String(item.riskLevel ?? "Baixo") as RiskLevel,
     alertas: alertasJson.length ? alertasJson : relationAlerts,
+    aiAnalise: item.aiAnalise ? String(item.aiAnalise) : null,
+    clarezaHistorico: item.clarezaHistorico ? String(item.clarezaHistorico) as PlainEmpenho["clarezaHistorico"] : null,
     documentosPagamento,
     documentoOrigemId: item.documentoOrigemId ? String(item.documentoOrigemId) : undefined
   } satisfies PlainEmpenho;
